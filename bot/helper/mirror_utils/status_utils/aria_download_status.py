@@ -48,7 +48,6 @@ class AriaDownloadStatus:
         return self.__download.download_speed_string()
 
     def name(self):
-        self.__update()
         return self.__download.name
 
     def size(self):
@@ -58,6 +57,7 @@ class AriaDownloadStatus:
         return self.__download.eta_string()
 
     def status(self):
+        self.__update()
         download = self.__download
         if download.is_waiting:
             return MirrorStatus.STATUS_WAITING
@@ -78,6 +78,7 @@ class AriaDownloadStatus:
         return self.__download.upload_length_string()
 
     def upload_speed(self):
+        self.__update()
         return self.__download.upload_speed_string()
 
     def ratio(self):
@@ -99,7 +100,7 @@ class AriaDownloadStatus:
     def cancel_download(self):
         self.__update()
         if self.__download.seeder:
-            LOGGER.info(f"Cancelling Seed: {self.name}")
+            LOGGER.info(f"Cancelling Seed: {self.name()}")
             self.__listener.onUploadError(f"Seeding stopped with Ratio: {self.ratio()} and Time: {self.seeding_time()}")
             aria2.remove([self.__download], force=True, files=True)
         elif len(self.__download.followed_by_ids) != 0:

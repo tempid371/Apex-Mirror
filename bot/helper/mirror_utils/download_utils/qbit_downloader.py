@@ -40,10 +40,13 @@ def add_qb_torrent(link, path, listener, ratio, seed_time):
             ext_hash = __get_hash_magnet(link)
         else:
             ext_hash = __get_hash_file(link)
+        if ext_hash is None or len(ext_hash) < 30:
+            sendMessage("Not a torrent! Qbittorrent only for torrents!", listener.bot, listener.message)
+            return
         tor_info = client.torrents_info(torrent_hashes=ext_hash)
         if len(tor_info) > 0:
             sendMessage("This Torrent already added!", listener.bot, listener.message)
-            return client.auth_log_out()
+            return
         if link.startswith('magnet:'):
             op = client.torrents_add(link, save_path=path, ratio_limit=ratio, seeding_time_limit=seed_time)
         else:
@@ -56,27 +59,23 @@ def add_qb_torrent(link, path, listener, ratio, seed_time):
                     tor_info = client.torrents_info(torrent_hashes=ext_hash)
                     if len(tor_info) > 0:
                         break
-                    elif time() - ADD_TIME >= 30:
-                        msg = "Not a torrent. If it's a torrent then report!"
-                        client.torrents_delete(torrent_hashes=ext_hash, delete_files=True)
+                    elif time() - ADD_TIME >= 60:
+                        msg = "Not added, maybe it will took time and u should remove it manually using eval!"
                         sendMessage(msg, listener.bot, listener.message)
-                        if not link.startswith('magnet:'):
-                            remove(link)
-                        return client.auth_log_out()
-            if not link.startswith('magnet:'):
-                remove(link)
+                        __remove_torrent(client, ext_hash)
+                        return
         else:
             sendMessage("This is an unsupported/invalid link.", listener.bot, listener.message)
-            if not link.startswith('magnet:'):
-                remove(link)
-            return client.auth_log_out()
+            __remove_torrent(client, ext_hash)
+            return
         tor_info = tor_info[0]
         ext_hash = tor_info.hash
         with download_dict_lock:
             download_dict[listener.uid] = QbDownloadStatus(listener, ext_hash)
         with qb_download_lock:
+            STALLED_TIME[ext_hash] = time()
             if not QbInterval:
-                periodic = setInterval(3, __qb_listener)
+                periodic = setInterval(5, __qb_listener)
                 QbInterval.append(periodic)
         listener.onDownloadStart()
         LOGGER.info(f"QbitDownload started: {tor_info.name} - Hash: {ext_hash}")
@@ -104,11 +103,14 @@ def add_qb_torrent(link, path, listener, ratio, seed_time):
             sendStatusMessage(listener.message, listener.bot)
     except Exception as e:
         sendMessage(str(e), listener.bot, listener.message)
+    finally:
+        if not link.startswith('magnet:'):
+            remove(link)
         client.auth_log_out()
 
 def __remove_torrent(client, hash_):
+    client.torrents_delete(torrent_hashes=hash_, delete_files=True)
     with qb_download_lock:
-        client.torrents_delete(torrent_hashes=hash_, delete_files=True)
         if hash_ in STALLED_TIME:
             del STALLED_TIME[hash_]
         if hash_ in STOP_DUP_CHECK:
@@ -178,14 +180,18 @@ def __onDownloadComplete(client, tor):
     if not listener.seed:
         client.torrents_pause(torrent_hashes=tor.hash)
     if listener.select:
-        clean_unwanted(tor.content_path.rsplit('/', 1)[0])
+        clean_unwanted(listener.dir)
     listener.onDownloadComplete()
     if listener.seed:
         with download_dict_lock:
-            if listener.uid not in download_dict:
-                client.torrents_delete(torrent_hashes=tor.hash, delete_files=True)
-                return
-            download_dict[listener.uid] = QbDownloadStatus(listener, tor.hash, True)
+            if listener.uid in download_dict:
+                removed = False
+                download_dict[listener.uid] = QbDownloadStatus(listener, tor.hash, True)
+            else:
+                removed = True
+        if removed:
+            __remove_torrent(client, tor.hash)
+            return
         with qb_download_lock:
             SEEDING.add(tor.hash)
         update_all_messages()
@@ -208,7 +214,7 @@ def __qb_listener():
                         Thread(target=__onDownloadError, args=("Dead Torrent!", client, tor_info)).start()
                 elif tor_info.state == "downloading":
                     STALLED_TIME[tor_info.hash] = time()
-                    if tor_info.hash not in STOP_DUP_CHECK and STOP_DUPLICATE:
+                    if STOP_DUPLICATE and tor_info.hash not in STOP_DUP_CHECK:
                         STOP_DUP_CHECK.add(tor_info.hash)
                         __stop_duplicate(client, tor_info)
                 elif tor_info.state == "stalledDL":
@@ -216,7 +222,7 @@ def __qb_listener():
                         msg = f"Force recheck - Name: {tor_info.name} Hash: "
                         msg += f"{tor_info.hash} Downloaded Bytes: {tor_info.downloaded} "
                         msg += f"Size: {tor_info.size} Total Size: {tor_info.total_size}"
-                        LOGGER.info(msg)
+                        LOGGER.error(msg)
                         client.torrents_recheck(torrent_hashes=tor_info.hash)
                         RECHECKED.add(tor_info.hash)
                     elif TORRENT_TIMEOUT is not None and time() - STALLED_TIME[tor_info.hash] >= TORRENT_TIMEOUT:
@@ -225,17 +231,12 @@ def __qb_listener():
                     client.torrents_recheck(torrent_hashes=tor_info.hash)
                 elif tor_info.state == "error":
                     Thread(target=__onDownloadError, args=("No enough space for this torrent on device", client, tor_info)).start()
-                elif (tor_info.state.lower().endswith("up") or tor_info.state == "uploading") and tor_info.hash not in UPLOADED:
+                elif (tor_info.completion_on != 0 or tor_info.state.endswith("UP") or tor_info.state == "uploading") \
+                      and tor_info.hash not in UPLOADED and tor_info.state not in ['checkingUP', 'checkingDL']:
                     UPLOADED.add(tor_info.hash)
                     __onDownloadComplete(client, tor_info)
-                elif tor_info.state == 'pausedUP' and tor_info.hash in SEEDING:
+                elif tor_info.state in ['pausedUP', 'pausedDL'] and tor_info.hash in SEEDING:
+                    SEEDING.remove(tor_info.hash)
                     __onSeedFinish(client, tor_info)
-                elif tor_info.state == 'pausedDL' and tor_info.completion_on != 0:
-                    # recheck torrent incase one of seed limits reached
-                    # sometimes it stuck on pausedDL from maxRatioAction but it should be pausedUP
-                    if tor_info.hash not in RECHECKED:
-                        LOGGER.info(f"Recheck on complete manually! PausedDL. Hash: {tor_info.hash}")
-                        client.torrents_recheck(torrent_hashes=tor_info.hash)
-                        RECHECKED.add(tor_info.hash)
         except Exception as e:
             LOGGER.error(str(e))
