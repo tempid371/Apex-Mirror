@@ -6,7 +6,8 @@ from time import time
 from sys import executable
 from telegram.ext import CommandHandler
 
-from bot import bot, dispatcher, updater, botStartTime, IGNORE_PENDING_REQUESTS, LOGGER, Interval, INCOMPLETE_TASK_NOTIFIER, DB_URI, app, main_loop, QbInterval
+from bot import bot, dispatcher, updater, botStartTime, IGNORE_PENDING_REQUESTS, LOGGER, Interval, \
+                DB_URI, app, main_loop, QbInterval, INCOMPLETE_TASK_NOTIFIER
 from .helper.ext_utils.fs_utils import start_cleanup, clean_all, exit_clean_up
 from .helper.ext_utils.bot_utils import get_readable_file_size, get_readable_time
 from .helper.ext_utils.db_handler import DbManger
@@ -14,7 +15,8 @@ from .helper.telegram_helper.bot_commands import BotCommands
 from .helper.telegram_helper.message_utils import sendMessage, sendMarkup, editMessage, sendLogFile
 from .helper.telegram_helper.filters import CustomFilters
 from .helper.telegram_helper.button_build import ButtonMaker
-from .modules import authorize, list, cancel_mirror, mirror_status, mirror_leech, clone, ytdlp, shell, eval, delete, count, leech_settings, search, rss, bt_select
+from .modules import authorize, list, cancel_mirror, mirror_status, mirror_leech, clone, ytdlp, \
+                     shell, eval, delete, count, users_settings, search, rss, bt_select, bot_settings
 
 
 def stats(update, context):
@@ -59,7 +61,6 @@ def stats(update, context):
             f'<b>Memory Used:</b> {mem_u}\n'
     sendMessage(stats, context.bot, update.message)
 
-
 def start(update, context):
     buttons = ButtonMaker()
     buttons.buildbutton("My Owner Channel", "https://t.me/whydeadport")
@@ -83,20 +84,18 @@ def restart(update, context):
         QbInterval[0].cancel()
         QbInterval.clear()
     clean_all()
-    srun(["pkill", "-f", "gunicorn|aria2c|qbittorrent-nox|ffmpeg"])
+    srun(["pkill", "-9", "-f", "gunicorn|aria2c|qbittorrent-nox|ffmpeg"])
     srun(["python3", "update.py"])
     with open(".restartmsg", "w") as f:
         f.truncate(0)
         f.write(f"{restart_message.chat.id}\n{restart_message.message_id}\n")
     osexecl(executable, executable, "-m", "bot")
 
-
 def ping(update, context):
     start_time = int(round(time() * 1000))
     reply = sendMessage("Starting Ping", context.bot, update.message)
     end_time = int(round(time() * 1000))
     editMessage(f'{end_time - start_time} ms', reply)
-
 
 def log(update, context):
     sendLogFile(context.bot, update.message)
@@ -122,7 +121,7 @@ NOTE: Try each command without any perfix to see more detalis.
 /{BotCommands.CloneCommand} [drive_url]: Copy file/folder to Google Drive.
 /{BotCommands.CountCommand} [drive_url]: Count file/folder of Google Drive.
 /{BotCommands.DeleteCommand} [drive_url]: Delete file/folder from Google Drive (Only Owner & Sudo).
-/{BotCommands.LeechSetCommand} [query]: Leech settings.
+/{BotCommands.UserSetCommand} [query]: Users settings.
 /{BotCommands.SetThumbCommand}: Reply photo to set it as Thumbnail.
 /{BotCommands.BtSelectCommand}: Select files from torrents by gid or reply.
 /{BotCommands.RssListCommand[0]} or /{BotCommands.RssListCommand[1]}: List all subscribed rss feed info (Only Owner & Sudo).
@@ -139,7 +138,7 @@ NOTE: Try each command without any perfix to see more detalis.
 /{BotCommands.PingCommand}: Check how long it takes to Ping the Bot (Only Owner & Sudo).
 /{BotCommands.AuthorizeCommand}: Authorize a chat or a user to use the bot (Only Owner & Sudo).
 /{BotCommands.UnAuthorizeCommand}: Unauthorize a chat or a user to use the bot (Only Owner & Sudo).
-/{BotCommands.AuthorizedUsersCommand}: Show authorized users (Only Owner & Sudo).
+/{BotCommands.UsersCommand}: show users settings (Only Owner & Sudo).
 /{BotCommands.AddSudoCommand}: Add sudo user (Only Owner).
 /{BotCommands.RmSudoCommand}: Remove sudo users (Only Owner).
 /{BotCommands.RestartCommand}: Restart and update the bot (Only Owner & Sudo).
@@ -155,7 +154,7 @@ def bot_help(update, context):
 
 def main():
     start_cleanup()
-    if INCOMPLETE_TASK_NOTIFIER and DB_URI is not None:
+    if INCOMPLETE_TASK_NOTIFIER and DB_URI:
         if notifier_dict := DbManger().get_incomplete_tasks():
             for cid, data in notifier_dict.items():
                 if ospath.isfile(".restartmsg"):
@@ -165,22 +164,22 @@ def main():
                 else:
                     msg = 'System Restarted!'
                 for tag, links in data.items():
-                     msg += f"\n\n{tag}: "
-                     for index, link in enumerate(links, start=1):
-                         msg += f" <a href='{link}'>{index}</a> |"
-                         if len(msg.encode()) > 4000:
-                             if 'Restarted Successfully!' in msg and cid == chat_id:
-                                 bot.editMessageText(msg, chat_id, msg_id, parse_mode='HTML', disable_web_page_preview=True)
-                                 osremove(".restartmsg")
-                             else:
-                                 try:
-                                     bot.sendMessage(cid, msg, 'HTML', disable_web_page_preview=True)
-                                 except Exception as e:
-                                     LOGGER.error(e)
-                             msg = ''
+                    msg += f"\n\n{tag}: "
+                    for index, link in enumerate(links, start=1):
+                        msg += f" <a href='{link}'>{index}</a> |"
+                        if len(msg.encode()) > 4000:
+                            if 'Restarted Successfully!' in msg and cid == chat_id:
+                                bot.editMessageText(msg, chat_id, msg_id, parse_mode='HTML', disable_web_page_preview=True)
+                                osremove(".restartmsg")
+                            else:
+                                try:
+                                    bot.sendMessage(cid, msg, 'HTML', disable_web_page_preview=True)
+                                except Exception as e:
+                                    LOGGER.error(e)
+                            msg = ''
                 if 'Restarted Successfully!' in msg and cid == chat_id:
-                     bot.editMessageText(msg, chat_id, msg_id, parse_mode='HTML', disable_web_page_preview=True)
-                     osremove(".restartmsg")
+                    bot.editMessageText(msg, chat_id, msg_id, parse_mode='HTML', disable_web_page_preview=True)
+                    osremove(".restartmsg")
                 else:
                     try:
                         bot.sendMessage(cid, msg, 'HTML', disable_web_page_preview=True)
@@ -194,21 +193,24 @@ def main():
         osremove(".restartmsg")
 
     start_handler = CommandHandler(BotCommands.StartCommand, start, run_async=True)
-    ping_handler = CommandHandler(BotCommands.PingCommand, ping,
-                                  filters=CustomFilters.authorized_chat | CustomFilters.authorized_user, run_async=True)
+    log_handler = CommandHandler(BotCommands.LogCommand, log,
+                                        filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
     restart_handler = CommandHandler(BotCommands.RestartCommand, restart,
-                                     filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
-    help_handler = CommandHandler(BotCommands.HelpCommand,
-                                  bot_help, filters=CustomFilters.authorized_chat | CustomFilters.authorized_user, run_async=True)
-    stats_handler = CommandHandler(BotCommands.StatsCommand,
-                                   stats, filters=CustomFilters.authorized_chat | CustomFilters.authorized_user, run_async=True)
-    log_handler = CommandHandler(BotCommands.LogCommand, log, filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
+                                        filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
+    ping_handler = CommandHandler(BotCommands.PingCommand, ping,
+                               filters=CustomFilters.authorized_chat | CustomFilters.authorized_user, run_async=True)
+    help_handler = CommandHandler(BotCommands.HelpCommand, bot_help,
+                               filters=CustomFilters.authorized_chat | CustomFilters.authorized_user, run_async=True)
+    stats_handler = CommandHandler(BotCommands.StatsCommand, stats,
+                               filters=CustomFilters.authorized_chat | CustomFilters.authorized_user, run_async=True)
+
     dispatcher.add_handler(start_handler)
     dispatcher.add_handler(ping_handler)
     dispatcher.add_handler(restart_handler)
     dispatcher.add_handler(help_handler)
     dispatcher.add_handler(stats_handler)
     dispatcher.add_handler(log_handler)
+
     updater.start_polling(drop_pending_updates=IGNORE_PENDING_REQUESTS)
     LOGGER.info("System Online!")
     signal(SIGINT, exit_clean_up)
