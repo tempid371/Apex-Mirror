@@ -1,3 +1,4 @@
+
 from signal import signal, SIGINT
 from os import path as ospath, remove as osremove, execl as osexecl
 from subprocess import run as srun, check_output
@@ -62,17 +63,17 @@ def stats(update, context):
 
 def start(update, context):
     buttons = ButtonMaker()
-    buttons.buildbutton("My Channel", "https://t.me/whydeadport")
-    buttons.buildbutton(" My Owner", "https://t.me/Apex_Not_Legend")
+    buttons.buildbutton("My Owner Channel", "https://t.me/whydeadport")
+    buttons.buildbutton("My Owner", "https://t.me/Apex_Not_Legend")
     reply_markup = buttons.build_menu(2)
     if CustomFilters.authorized_user(update) or CustomFilters.authorized_chat(update):
         start_string = f'''
-A personal Mirror Bot For @Apex_Not_Legend!
+Hello 👋 A Personal Bot For My Owner Apex_Not_Legend!
 Type /{BotCommands.HelpCommand} to get a list of available commands
 '''
         sendMarkup(start_string, context.bot, update.message, reply_markup)
     else:
-        sendMarkup('Not an Authorized user, deploy your own mirror-leech bot', context.bot, update.message, reply_markup)
+        sendMarkup('Sorry Sir You Cannot Use This Service Its Belongs To @Apex_Not_Legend', context.bot, update.message, reply_markup)
 
 def restart(update, context):
     restart_message = sendMessage("Restarting...", context.bot, update.message)
@@ -160,7 +161,7 @@ def main():
                         chat_id, msg_id = map(int, f)
                     msg = 'Restarted Successfully!'
                 else:
-                    msg = 'Bot Restarted!'
+                    msg = 'System Restarted!'
                 for tag, links in data.items():
                      msg += f"\n\n{tag}: "
                      for index, link in enumerate(links, start=1):
@@ -187,7 +188,7 @@ def main():
     if ospath.isfile(".restartmsg"):
         with open(".restartmsg") as f:
             chat_id, msg_id = map(int, f)
-        bot.edit_message_text("Restarted Successfully!", chat_id, msg_id)
+        bot.edit_message_text("System Rebooted Successfully!", chat_id, msg_id)
         osremove(".restartmsg")
 
     start_handler = CommandHandler(BotCommands.StartCommand, start, run_async=True)
@@ -207,7 +208,7 @@ def main():
     dispatcher.add_handler(stats_handler)
     dispatcher.add_handler(log_handler)
     updater.start_polling(drop_pending_updates=IGNORE_PENDING_REQUESTS)
-    LOGGER.info("Bot Started!")
+    LOGGER.info("System Online!")
     signal(SIGINT, exit_clean_up)
 
 app.start()
